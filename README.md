@@ -61,3 +61,6 @@ GROQ_API_KEY=your_api_key_here
 ## Author
 
 Lis Mary Lijo
+
+<img width="2879" height="1542" alt="image" src="https://github.com/user-attachments/assets/0a4fbd98-618c-47d4-8613-aa92a10e92af" />
+
