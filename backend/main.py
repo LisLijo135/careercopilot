@@ -1,3 +1,8 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # reads from backend/.env file
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -16,9 +21,9 @@ app.add_middleware(
 )
 
 # ── Groq config ────────────────────────────────────────────────────────────────
-GROQ_API_KEY = "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"  
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "llama-3.3-70b-versatile"
+MODEL        = "llama-3.3-70b-versatile"
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
@@ -42,8 +47,6 @@ class RoastRequest(BaseModel):
 
 def call_groq(prompt: str) -> str:
     try:
-        # Truncate prompt to stay within Groq's 8192 token limit
-        # ~4 chars per token, so 6000 chars ≈ 1500 tokens safe limit
         prompt = prompt[:6000]
 
         headers = {
@@ -59,7 +62,6 @@ def call_groq(prompt: str) -> str:
 
         res = requests.post(GROQ_URL, headers=headers, json=body, timeout=60)
 
-        # Print full error details to backend terminal for debugging
         if res.status_code != 200:
             print(f"Groq error {res.status_code}: {res.text}")
             error_detail = res.json().get("error", {}).get("message", res.text)
@@ -80,28 +82,22 @@ async def extract_resume(file: UploadFile = File(...)):
     content  = await file.read()
     filename = file.filename.lower()
 
-    # Plain text / markdown
     if filename.endswith(".txt") or filename.endswith(".md"):
         try:
             return {"text": content.decode("utf-8"), "method": "text"}
         except Exception as e:
             return {"text": "", "error": str(e)}
 
-    # PDF
     if filename.endswith(".pdf"):
-
-        # Try 1 — pdfplumber (digital PDFs)
         try:
             import pdfplumber
             with pdfplumber.open(io.BytesIO(content)) as pdf:
                 text = "\n".join(page.extract_text() or "" for page in pdf.pages)
             if text.strip():
-                # Limit extracted text to 3000 chars to avoid token overflow
                 return {"text": text.strip()[:3000], "method": "pdfplumber"}
         except Exception as e:
             print(f"pdfplumber error: {e}")
 
-        # Try 2 — OCR (scanned/image PDFs)
         try:
             import pytesseract
             from pdf2image import convert_from_bytes
@@ -113,7 +109,6 @@ async def extract_resume(file: UploadFile = File(...)):
         except Exception as e:
             print(f"OCR error: {e}")
 
-        # Both failed — show paste fallback in frontend
         return {
             "text": "",
             "error": "scanned_pdf",
@@ -223,7 +218,6 @@ Keep it professional and concise."""
 
 @app.post("/improve-resume")
 def improve_resume(data: OptimizeRequest):
-    # Limit to 1000 chars to stay well within token limit
     resume_snippet = data.resume_text[:1000]
     job_snippet    = data.job_description[:300]
     prompt = f"""Rewrite this resume to be ATS-optimized and impactful.
